@@ -24,7 +24,6 @@ numba = "^0.55"
 pystencils = "^1.0"
 scipy = "^1.7.3"
 sympy = "^1.9"
-pyfftw = "^0.13.0"
 psutil = "^5.9.0"
 h5py = "^3.6"
 pyelastica = "^0.3"
@@ -41,6 +40,7 @@ pytest = "^7.0.1"
 coverage = "^6.3.2"
 pytest-cov = "^3.0.0"
 mypy = "^0.982"
+pyfftw = "^0.13.0"
 
 [tool.poetry.extras]
 examples = ["click", "coomm", "magneto_pyelastica"]

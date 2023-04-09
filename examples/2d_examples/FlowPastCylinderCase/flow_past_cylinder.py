@@ -4,12 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sopht.simulator as sps
 import sopht.utils as spu
-from typing import Tuple
 
 
 def flow_past_cylinder_boundary_forcing_case(
     nondim_final_time: float,
-    grid_size: Tuple[int, int],
+    grid_size: tuple[int, int],
     reynolds: float,
     coupling_stiffness: float = -5e4,
     coupling_damping: float = -20,
@@ -33,18 +32,16 @@ def flow_past_cylinder_boundary_forcing_case(
     cyl_radius = 0.03
     nu = cyl_radius * velocity_scale / reynolds
     x_range = 1.0
-
-    flow_sim = sps.UnboundedFlowSimulator2D(
+    flow_sim = sps.UnboundedNavierStokesFlowSimulator2D(
         grid_size=grid_size,
         x_range=x_range,
         kinematic_viscosity=nu,
-        flow_type="navier_stokes_with_forcing",
+        with_forcing=True,
         with_free_stream_flow=True,
         real_t=real_t,
         num_threads=num_threads,
         time=0.0,
     )
-
     # Initialize fixed cylinder (elastica rigid body) with direction along Z
     x_cm = 2.5 * cyl_radius
     y_cm = 0.5 * grid_size_y / grid_size_x

@@ -2,7 +2,7 @@
 import h5py
 import numpy as np
 from elastica.rod.cosserat_rod import CosseratRod
-from typing import Dict, Type, List
+import sopht.utils as spu
 
 
 class IO:
@@ -30,7 +30,7 @@ class IO:
                                 (Fields)   (Fields)             (Fields)   (Fields)
     """
 
-    def __init__(self, dim: int, real_dtype: Type = np.float64) -> None:
+    def __init__(self, dim: int, real_dtype: type = np.float64) -> None:
         """Class initializer."""
         self.dim = dim
         assert self.dim == 2 or self.dim == 3, "Invalid dimension (only 2D and 3D)"
@@ -40,16 +40,16 @@ class IO:
         # Initialize dictionaries for fields for IO and their
         # corresponding field_type ('Scalar' or 'Vector') Eulerian grid
         self.eulerian_grid_defined = False
-        self.eulerian_fields: Dict = {}
-        self.eulerian_fields_type: Dict = {}
+        self.eulerian_fields: dict = {}
+        self.eulerian_fields_type: dict = {}
 
         # Lagrangian grid
-        self.lagrangian_fields: Dict = {}
-        self.lagrangian_fields_type: Dict = {}
-        self.lagrangian_grids: Dict = {}
-        self.lagrangian_fields_with_grid_name: Dict = {}
+        self.lagrangian_fields: dict = {}
+        self.lagrangian_fields_type: dict = {}
+        self.lagrangian_grids: dict = {}
+        self.lagrangian_fields_with_grid_name: dict = {}
         self.lagrangian_grid_count = 0
-        self.lagrangian_grid_connection: Dict = {}
+        self.lagrangian_grid_connection: dict = {}
 
     def define_eulerian_grid(
         self,
@@ -302,7 +302,7 @@ class IO:
         if self.lagrangian_fields:
             self.generate_xdmf_lagrangian(h5_file_name=h5_file_name, time=time)
 
-    def load(self, h5_file_name: str) -> None:  # noqa: C901
+    def load(self, h5_file_name: str) -> float:  # noqa: C901
         """Load fields from hdf5 file.
 
         Field arrays need to be allocated and added to `eulerian_fields` and/or
@@ -314,7 +314,7 @@ class IO:
             String containing name of the hdf5 file.
         """
         with h5py.File(h5_file_name, "r") as f:
-            keys: List = []
+            keys: list = []
             f.visit(keys.append)
 
             # Load time
@@ -622,7 +622,7 @@ class CosseratRodIO(IO):
     """
 
     def __init__(
-        self, cosserat_rod: CosseratRod, dim: int, real_dtype: Type = np.float64
+        self, cosserat_rod: CosseratRod, dim: int, real_dtype: type = np.float64
     ) -> None:
         super().__init__(dim, real_dtype)
         self.cosserat_rod = cosserat_rod
@@ -648,3 +648,52 @@ class CosseratRodIO(IO):
             self.cosserat_rod.position_collection[: self.dim, 1:]
             + self.cosserat_rod.position_collection[: self.dim, :-1]
         )
+
+
+class EulerianFieldIO(IO):
+    """
+    Derived IO class for saving Eulerian grid fields.
+    """
+
+    def __init__(
+        self, position_field: np.ndarray, eulerian_fields_dict: dict[str, np.ndarray]
+    ) -> None:
+        """Class initializer
+
+        :param position_field: Array with position coordinates, of shape (grid_dim, grid_size)
+        :param eulerian_fields_dict: Dictionary with keys as names of Eulerian fields
+        to be saved, with corresponding values representing the field array names
+
+        """
+        grid_dim = position_field.shape[0]
+        grid_size = position_field.shape[1:]
+        real_dtype = position_field.dtype
+        super().__init__(dim=grid_dim, real_dtype=real_dtype)
+
+        match grid_dim:
+            case 2:
+                io_origin = np.array(
+                    [
+                        position_field[spu.VectorField.y_axis_idx()].min(),
+                        position_field[spu.VectorField.x_axis_idx()].min(),
+                    ]
+                )
+            case 3:
+                io_origin = np.array(
+                    [
+                        position_field[spu.VectorField.z_axis_idx()].min(),
+                        position_field[spu.VectorField.y_axis_idx()].min(),
+                        position_field[spu.VectorField.x_axis_idx()].min(),
+                    ]
+                )
+            case _:
+                raise ValueError("Position field of invalid shape.")
+        # get grid spacing from X coodinate field
+        x_grid_flattened_field = position_field[spu.VectorField.x_axis_idx()].reshape(
+            -1,
+        )
+        dx = x_grid_flattened_field[1] - x_grid_flattened_field[0]
+        io_dx = dx * np.ones(grid_dim)
+        io_grid_size = np.array(grid_size)
+        self.define_eulerian_grid(origin=io_origin, dx=io_dx, grid_size=io_grid_size)
+        self.add_as_eulerian_fields_for_io(**eulerian_fields_dict)

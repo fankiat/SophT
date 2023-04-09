@@ -4,12 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sopht.simulator as sps
 import sopht.utils as spu
-from typing import List, Tuple, Union
 
 
 def flow_past_rod_case(
     non_dim_final_time: float,
-    grid_size: Tuple[int, int],
+    grid_size: tuple[int, int],
     reynolds: float,
     cyl_diameter_to_rod_length: float,
     beam_aspect_ratio: float,
@@ -100,11 +99,11 @@ def flow_past_rod_case(
     # Re = velocity_free_stream * cyl_diameter / nu
     cyl_diameter = base_length * cyl_diameter_to_rod_length
     nu = cyl_diameter * velocity_free_stream / reynolds
-    flow_sim = sps.UnboundedFlowSimulator2D(
+    flow_sim = sps.UnboundedNavierStokesFlowSimulator2D(
         grid_size=grid_size,
         x_range=x_range,
         kinematic_viscosity=nu,
-        flow_type="navier_stokes_with_forcing",
+        with_forcing=True,
         with_free_stream_flow=True,
         real_t=real_t,
         num_threads=num_threads,
@@ -176,8 +175,8 @@ def flow_past_rod_case(
     # Since the cylinder is fixed, we don't add it to pyelastica simulator,
     # and directly use it for setting up the flow interactor.
     # ==================FLOW-ROD COMMUNICATOR SETUP START======
-    flow_body_interactors: List[
-        Union[sps.RigidBodyFlowInteraction, sps.CosseratRodFlowInteraction]
+    flow_body_interactors: list[
+        sps.RigidBodyFlowInteraction | sps.CosseratRodFlowInteraction
     ] = []
     cosserat_rod_flow_interactor = sps.CosseratRodFlowInteraction(
         cosserat_rod=flow_past_rod,
@@ -239,20 +238,13 @@ def flow_past_rod_case(
     # ==================FLOW-ROD COMMUNICATOR SETUP END======
     # =================FLOW H5 DUMPING====================
     if save_flow_data:
-        # setup IO
-        # TODO internalise this in flow simulator as dump_fields
-        io_origin = np.array(
-            [
-                flow_sim.position_field[y_axis_idx].min(),
-                flow_sim.position_field[x_axis_idx].min(),
-            ]
-        )
-        io_dx = flow_sim.dx * np.ones(grid_dim)
-        io_grid_size = np.array(grid_size)
-        io = spu.IO(dim=grid_dim, real_dtype=real_t)
-        io.define_eulerian_grid(origin=io_origin, dx=io_dx, grid_size=io_grid_size)
-        io.add_as_eulerian_fields_for_io(
-            vorticity=flow_sim.vorticity_field, velocity=flow_sim.velocity_field
+        # setup flow IO
+        io = spu.EulerianFieldIO(
+            position_field=flow_sim.position_field,
+            eulerian_fields_dict={
+                "vorticity": flow_sim.vorticity_field,
+                "velocity": flow_sim.velocity_field,
+            },
         )
         # Initialize rod IO
         rod_io = spu.CosseratRodIO(

@@ -29,26 +29,30 @@ export OMP_NUM_THREADS=32
 $PROJECT/.conda/envs/(env_name)/bin/python -u (program_name)
 
 """
-from typing import Dict, Union
+from typing import Optional, Literal
+
+ALLOWED_CLUSTERS = Literal["stampede", "bridges", "expanse"]
 
 
 def create_submit_file(
+    job_name: str,
     program_name: str,
     environment_name: str,
-    cluster_info_dict: Dict,
-    output_file_name: Union[str, None] = None,
-    error_file_name: Union[str, None] = None,
+    cluster_name: ALLOWED_CLUSTERS,
+    output_file_name: Optional[str] = None,
+    error_file_name: Optional[str] = None,
     partition: str = "shared",
     num_nodes: int = 1,
     num_threads: int = 4,
     memory: int = 64,
     time: str = "48:00:00",
     verbose: bool = False,
-    mail_user: Union[str, None] = None,
-    mail_type: Union[str, None] = None,
+    mail_user: Optional[str] = None,
+    mail_type: Optional[str] = None,
     other_cli_arguments: str = "",
 ) -> None:
 
+    cluster_info_dict = CLUSTER_MAP[cluster_name]
     filename = "submit_" + program_name.replace(".py", ".sh")
     f = open(filename, "w")
     f.writelines(
@@ -56,15 +60,20 @@ def create_submit_file(
             "#!/bin/bash\n",
             "\n",
             f"#SBATCH -p {cluster_info_dict.get(partition)}\n",
-            f"#SBATCH -J {program_name.replace('.py', '')}\n",
+            f"#SBATCH -J {job_name}\n",
             f"#SBATCH -N {num_nodes}\n",
             f"#SBATCH -t {time}\n",
             f"#SBATCH --ntasks-per-node={num_threads}\n",
             f"#SBATCH --account={cluster_info_dict.get('account')}\n",
-            f"#SBATCH --mem={memory}G\n",
         ]
     )
-
+    # cannot set memory for stampede
+    if cluster_name != "stampede":
+        f.writelines(
+            [
+                f"#SBATCH --mem={memory}G\n",
+            ]
+        )
     if not output_file_name:
         output_file_name = "%x_%j.out"
     if not error_file_name:
@@ -75,6 +84,8 @@ def create_submit_file(
 
     if mail_user:
         f.write(f"#SBATCH --mail-user={mail_user}\n")
+        if cluster_name == "stampede":
+            print("Set mail user as the complete email-id for stampede!")
         if not mail_type:
             mail_type = "ALL"
         f.write(f"#SBATCH --mail-type={mail_type}\n")
@@ -82,10 +93,12 @@ def create_submit_file(
     if verbose:
         f.write("#SBATCH -v\n")
 
+    f.writelines(["\n"])
+    # stampede doesn't have conda
+    if cluster_name != "stampede":
+        f.writelines(["module load anaconda3\n"])
     f.writelines(
         [
-            "\n",
-            "module load anaconda3\n",
             "date\n",
             "\n",
             "echo Job name: $SLURM_JOB_NAME\n",
@@ -93,6 +106,13 @@ def create_submit_file(
             "echo Number of processes: $SLURM_NTASKS\n",
             "\n",
             f"source activate {environment_name}\n",
+        ]
+    )
+    # fix stampede issue in pythonpath variable
+    if cluster_name == "stampede":
+        f.write("unset PYTHONPATH\n")
+    f.writelines(
+        [
             f"export OMP_NUM_THREADS={num_threads}\n",
             f"python -u {program_name} --num_threads {num_threads} {other_cli_arguments}\n",
             "\n",
@@ -103,25 +123,37 @@ def create_submit_file(
 
 
 if __name__ == "__main__":
-    expanse_info_dict = {"account": "uic409", "shared": "shared", "compute": "compute"}
-    bridges_info_dict = {
+    EXPANSE_INFO_DICT = {"account": "uic409", "shared": "shared", "compute": "compute"}
+    BRIDGES_INFO_DICT = {
         "account": "mcb200029p",
         "shared": "RM-shared",
         "compute": "RM",
     }
-    program_name = "run_tapered_arm_and_sphere_with_flow.py"
-    environment_name = "sopht-examples-env"
-    partition = "compute"
-    time = "06:00:00"
-    num_threads = 32
-    mail_user = "atekinal"
+    STAMPEDE_INFO_DICT = {
+        "account": "TG-MCB190004",
+        "compute": "icx-normal",
+    }
+    CLUSTER_MAP = {
+        "expanse": EXPANSE_INFO_DICT,
+        "bridges": BRIDGES_INFO_DICT,
+        "stampede": STAMPEDE_INFO_DICT,
+    }
+    PROGRAM_NAME = "run_tapered_arm_and_sphere_with_flow.py"
+    JOB_NAME = PROGRAM_NAME.replace(".py", "")
+    ENVIRONMENT_NAME = "sopht-examples-env"
+    PARTITION = "compute"
+    TIME = "06:00:00"
+    NUM_THREADS = 32
+    MAIL_USER = "atekinal"
+    CLUSTER_NAME: ALLOWED_CLUSTERS = "expanse"
 
     create_submit_file(
-        program_name=program_name,
-        environment_name=environment_name,
-        cluster_info_dict=expanse_info_dict,
-        time=time,
-        partition=partition,
-        num_threads=num_threads,
-        mail_user=mail_user,
+        job_name=JOB_NAME,
+        program_name=PROGRAM_NAME,
+        environment_name=ENVIRONMENT_NAME,
+        cluster_name=CLUSTER_NAME,
+        time=TIME,
+        partition=PARTITION,
+        num_threads=NUM_THREADS,
+        mail_user=MAIL_USER,
     )

@@ -9,21 +9,21 @@ from matplotlib import pyplot as plt
 
 
 def tapered_arm_and_cylinder_flow_coupling(
-    non_dimensional_final_time,
-    n_elems,
-    slenderness_ratio,
-    cauchy_number,
-    mass_ratio,
-    reynolds_number,
-    stretch_bending_ratio,
-    taper_ratio,
-    grid_size,
-    coupling_stiffness=-2e4,
-    coupling_damping=-1e1,
-    num_threads=4,
-    precision="single",
-    save_data=True,
-):
+    non_dimensional_final_time: float,
+    n_elems: int,
+    slenderness_ratio: float,
+    cauchy_number: float,
+    mass_ratio: float,
+    reynolds_number: float,
+    stretch_bending_ratio: float,
+    taper_ratio: float,
+    grid_size: tuple[int, int, int],
+    coupling_stiffness: float = -2e4,
+    coupling_damping: float = -1e1,
+    num_threads: int = 4,
+    precision: str = "single",
+    save_data: bool = True,
+) -> None:
     # =================COMMON STUFF BEGIN=====================
     grid_dim = 3
     grid_size_z, grid_size_y, grid_size_x = grid_size
@@ -126,21 +126,22 @@ def tapered_arm_and_cylinder_flow_coupling(
     # ==================FLOW SETUP START=========================
     # Flow parameters
     kinematic_viscosity = base_diameter * vel_scale / reynolds_number
-    flow_sim = sps.UnboundedFlowSimulator3D(
+    flow_sim = sps.UnboundedNavierStokesFlowSimulator3D(
         grid_size=grid_size,
         x_range=x_range,
         kinematic_viscosity=kinematic_viscosity,
-        flow_type="navier_stokes_with_forcing",
+        with_forcing=True,
         with_free_stream_flow=False,
         real_t=real_t,
         num_threads=num_threads,
-        navier_stokes_inertial_term_form="rotational",
         filter_vorticity=True,
         filter_setting_dict={"order": 1, "type": "multiplicative"},
     )
     # ==================FLOW SETUP END=========================
     # ==================FLOW-ROD COMMUNICATOR SETUP START======
-    flow_body_interactors = []
+    flow_body_interactors: list[
+        sps.RigidBodyFlowInteraction | sps.CosseratRodFlowInteraction
+    ] = []
     cosserat_rod_flow_interactor = sps.CosseratRodFlowInteraction(
         cosserat_rod=env.shearable_rod,
         eul_grid_forcing_field=flow_sim.eul_grid_forcing_field,
@@ -182,22 +183,13 @@ def tapered_arm_and_cylinder_flow_coupling(
     # ==================FLOW-ROD COMMUNICATOR SETUP END======
 
     if save_data:
-        # setup IO
-        # TODO internalise this in flow simulator as dump_fields
-        io_origin = np.array(
-            [
-                flow_sim.position_field[z_axis_idx].min(),
-                flow_sim.position_field[y_axis_idx].min(),
-                flow_sim.position_field[x_axis_idx].min(),
-            ]
-        )
-        io_dx = flow_sim.dx * np.ones(grid_dim)
-        io_grid_size = np.array(grid_size)
-        # Initialize flow eulerian grid IO
-        io = spu.IO(dim=grid_dim, real_dtype=real_t)
-        io.define_eulerian_grid(origin=io_origin, dx=io_dx, grid_size=io_grid_size)
-        io.add_as_eulerian_fields_for_io(
-            vorticity=flow_sim.vorticity_field, velocity=flow_sim.velocity_field
+        # setup flow IO
+        io = spu.EulerianFieldIO(
+            position_field=flow_sim.position_field,
+            eulerian_fields_dict={
+                "vorticity": flow_sim.vorticity_field,
+                "velocity": flow_sim.velocity_field,
+            },
         )
         # Initialize rod io
         rod_io = spu.CosseratRodIO(
@@ -359,7 +351,7 @@ if __name__ == "__main__":
 
     @click.command()
     @click.option("--num_threads", default=4, help="Number of threads for parallelism.")
-    def simulate_parallelised_octopus_arm(num_threads):
+    def simulate_parallelised_octopus_arm(num_threads: int) -> None:
 
         click.echo(f"Number of threads for parallelism: {num_threads}")
 

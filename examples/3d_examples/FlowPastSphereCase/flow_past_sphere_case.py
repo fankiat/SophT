@@ -6,37 +6,35 @@ import sopht.utils as spu
 
 
 def flow_past_sphere_case(
-    nondim_time,
-    grid_size,
-    reynolds=100.0,
-    coupling_stiffness=-6e5 / 4,
-    coupling_damping=-3.5e2 / 4,
-    num_threads=4,
-    precision="single",
-    save_flow_data=False,
-):
+    nondim_time: float,
+    grid_size: tuple[int, int, int],
+    reynolds: float = 100.0,
+    coupling_stiffness: float = -6e5 / 4,
+    coupling_damping: float = -3.5e2 / 4,
+    num_threads: int = 4,
+    precision: str = "single",
+    save_flow_data: bool = False,
+) -> None:
     """
     This example considers the case of flow past a sphere in 3D.
     """
     grid_dim = 3
     grid_size_z, grid_size_y, grid_size_x = grid_size
     real_t = spu.get_real_t(precision)
-    x_axis_idx = spu.VectorField.x_axis_idx()
-    y_axis_idx = spu.VectorField.y_axis_idx()
+    x_axis_idx: int = spu.VectorField.x_axis_idx()
     z_axis_idx = spu.VectorField.z_axis_idx()
     x_range = 1.0
     far_field_velocity = 1.0
     sphere_diameter = 0.4 * min(grid_size_z, grid_size_y) / grid_size_x * x_range
     nu = far_field_velocity * sphere_diameter / reynolds
-    flow_sim = sps.UnboundedFlowSimulator3D(
+    flow_sim = sps.UnboundedNavierStokesFlowSimulator3D(
         grid_size=grid_size,
         x_range=x_range,
         kinematic_viscosity=nu,
         real_t=real_t,
         num_threads=num_threads,
-        flow_type="navier_stokes_with_forcing",
+        with_forcing=True,
         with_free_stream_flow=True,
-        navier_stokes_inertial_term_form="rotational",
         time=0.0,
         # filter_vorticity=True,
         # filter_setting_dict={"order": 1, "type": "multiplicative"},
@@ -80,21 +78,13 @@ def flow_past_sphere_case(
     # ==================FLOW-BODY COMMUNICATOR SETUP END======
 
     if save_flow_data:
-        # setup IO
-        # TODO internalise this in flow simulator as dump_fields
-        io_origin = np.array(
-            [
-                flow_sim.position_field[z_axis_idx].min(),
-                flow_sim.position_field[y_axis_idx].min(),
-                flow_sim.position_field[x_axis_idx].min(),
-            ]
-        )
-        io_dx = flow_sim.dx * np.ones(grid_dim)
-        io_grid_size = np.array(grid_size)
-        io = spu.IO(dim=grid_dim, real_dtype=real_t)
-        io.define_eulerian_grid(origin=io_origin, dx=io_dx, grid_size=io_grid_size)
-        io.add_as_eulerian_fields_for_io(
-            vorticity=flow_sim.vorticity_field, velocity=flow_sim.velocity_field
+        # setup flow IO
+        io = spu.EulerianFieldIO(
+            position_field=flow_sim.position_field,
+            eulerian_fields_dict={
+                "vorticity": flow_sim.vorticity_field,
+                "velocity": flow_sim.velocity_field,
+            },
         )
         # Initialize sphere IO
         sphere_io = spu.IO(dim=grid_dim, real_dtype=real_t)
@@ -121,8 +111,8 @@ def flow_past_sphere_case(
         sphere_flow_interactor.forcing_grid.position_field[z_axis_idx]
     )
     # Find the Eulerian grid index that has the sphere center (z coordinate)
-    sphere_center_on_euler_grid_idx = np.argmin(
-        np.abs(euler_grid_center_in_z_dir - lag_grid_center_in_z_dir)
+    sphere_center_on_euler_grid_idx = int(
+        np.argmin(np.abs(euler_grid_center_in_z_dir - lag_grid_center_in_z_dir))
     )
     time = []
     drag_coeffs = []
@@ -252,7 +242,9 @@ if __name__ == "__main__":
     @click.option("--num_threads", default=4, help="Number of threads for parallelism.")
     @click.option("--nx", default=128, help="Number of grid points in x direction.")
     @click.option("--reynolds", default=100.0, help="Reynolds number of flow.")
-    def simulate_parallelised_flow_past_sphere(num_threads, nx, reynolds):
+    def simulate_parallelised_flow_past_sphere(
+        num_threads: int, nx: int, reynolds: float
+    ) -> None:
         ny = nx // 2
         nz = nx // 2
         # in order Z, Y, X

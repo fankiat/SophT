@@ -2,11 +2,10 @@ from lamb_oseen_helpers import compute_lamb_oseen_velocity, compute_lamb_oseen_v
 import numpy as np
 import sopht.simulator as sps
 import sopht.utils as spu
-from typing import Tuple
 
 
 def lamb_oseen_vortex_flow_case(
-    grid_size: Tuple[int, int], num_threads: int = 4, precision: str = "single"
+    grid_size: tuple[int, int], num_threads: int = 4, precision: str = "single"
 ) -> None:
     """
     This example considers a simple case of Lamb-Oseen vortex, advecting with a
@@ -28,17 +27,16 @@ def lamb_oseen_vortex_flow_case(
     t_end = 1.4
     # to start with max circulation = 1
     gamma = 4 * np.pi * nu * t_start
-    flow_sim = sps.UnboundedFlowSimulator2D(
+    flow_sim = sps.UnboundedNavierStokesFlowSimulator2D(
         grid_size=grid_size,
         x_range=x_range,
         kinematic_viscosity=nu,
-        flow_type="navier_stokes",
+        with_forcing=False,
         with_free_stream_flow=True,
         real_t=real_t,
         num_threads=num_threads,
         time=t_start,
     )
-
     flow_sim.vorticity_field[...] = compute_lamb_oseen_vorticity(
         x=flow_sim.position_field[x_axis_idx],
         y=flow_sim.position_field[y_axis_idx],
@@ -51,7 +49,7 @@ def lamb_oseen_vortex_flow_case(
     )
 
     # Initialize velocity free stream magnitude in X and Y direction
-    velocity_free_stream = np.ones(grid_dim, dtype=real_t)
+    velocity_free_stream: np.ndarray = np.ones(grid_dim, dtype=real_t)
     flow_sim.velocity_field[...] = compute_lamb_oseen_velocity(
         x=flow_sim.position_field[x_axis_idx],
         y=flow_sim.position_field[y_axis_idx],
@@ -129,22 +127,6 @@ def lamb_oseen_vortex_flow_case(
     print(f"Final vortex center location: ({x_cm_final}, {y_cm_final})")
     print(f"vorticity L2 error: {l2_error}")
     print(f"vorticity Linf error: {linf_error}")
-    final_analytical_velocity_field = compute_lamb_oseen_velocity(
-        x=flow_sim.position_field[x_axis_idx],
-        y=flow_sim.position_field[y_axis_idx],
-        x_cm=x_cm_final,
-        y_cm=y_cm_final,
-        nu=nu,
-        gamma=gamma,
-        t=t_end,
-        real_t=real_t,
-    )
-    flow_sim.compute_velocity_from_vorticity()
-    error_field = np.fabs(flow_sim.velocity_field - final_analytical_velocity_field)
-    l2_error = np.linalg.norm(error_field) * flow_sim.dx
-    linf_error = np.amax(error_field)
-    print(f"velocity L2 error: {l2_error}")
-    print(f"velocity Linf error: {linf_error}")
 
 
 if __name__ == "__main__":
